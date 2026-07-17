@@ -5,6 +5,7 @@ import csv
 import datetime as dt
 import html
 import io
+import os
 from dataclasses import asdict
 from pathlib import Path
 
@@ -278,7 +279,9 @@ def _render_questions(result: dict, view: dict) -> None:
     if generation.get("status") == "fallback" and generation.get("error"):
         st.warning(f"Codex agenda unavailable: {generation.get('error')}")
 
-    if st.button("Enhance DD agenda with Codex", type="secondary"):
+    if os.getenv("FUNDLENS_CODEX_AVAILABLE") and st.button(
+        "Enhance DD agenda with Codex", type="secondary"
+    ):
         with st.spinner("Generating local Codex DD agenda"):
             apply_codex_dd_agenda(result)
             st.session_state.analysis_result = result
