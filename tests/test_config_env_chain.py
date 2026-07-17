@@ -13,7 +13,7 @@ def _reload_config():
 
 
 def test_env_chain_has_no_hardcoded_research_tools_path():
-    """The Windows-specific C:/Users/hp/research_tools path must be gone."""
+    """The Windows-specific hardcoded path must be gone from the env chain."""
     config = _reload_config()
     import inspect
     body = inspect.getsource(config._load_env_chain)
