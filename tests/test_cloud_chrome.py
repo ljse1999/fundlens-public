@@ -39,6 +39,7 @@ def test_patch_sets_binary_and_flags_when_binary_given(tmp_path):
     args = opts.arguments if hasattr(opts, "arguments") else []
     assert "--no-sandbox" in args
     assert "--disable-dev-shm-usage" in args
+    assert "--remote-debugging-pipe" in args
     assert "--headless=new" in args
 
 
@@ -68,6 +69,10 @@ def test_patch_uses_explicit_system_driver(monkeypatch, tmp_path):
 
     assert captured["service"].path == fake_driver
     assert captured["options"].binary_location == fake_browser
+    assert any(
+        arg.startswith("--user-data-dir=") for arg in captured["options"].arguments
+    )
+    assert "--remote-debugging-pipe" in captured["options"].arguments
     assert captured["quit"] is True
 
 

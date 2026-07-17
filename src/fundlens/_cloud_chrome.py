@@ -35,6 +35,7 @@ import os
 import sys
 from contextlib import contextmanager
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 
 #: Candidate Chromium binary locations on a Linux container.
@@ -103,7 +104,16 @@ def _install_patch(binary: str | None = None, driver_binary: str | None = None) 
     #   --no-sandbox            Chrome refuses to run as root without this.
     #   --disable-dev-shm-usage Avoid /dev/shm exhaustion on small containers.
     #   --disable-gpu           No GPU available in the container.
-    cloud_flags = ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+    cloud_flags = [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--disable-extensions",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--remote-debugging-pipe",
+    ]
 
     # Merge in any caller-supplied flags via SELENIUM_CHROME_FLAGS (mstarpy's
     # own mechanism) so we don't clobber intentional configuration.
@@ -134,21 +144,31 @@ def _install_patch(binary: str | None = None, driver_binary: str | None = None) 
         @contextmanager
         def get_webdriver():
             active_driver = None
-            try:
-                active_driver = webdriver.Chrome(
-                    service=Service(executable_path=driver_binary),
-                    options=_mstarpy_utils.browser_options(),
-                )
-                active_drivers = getattr(_mstarpy_utils, "_active_webdrivers", None)
-                if active_drivers is not None:
-                    active_drivers.add(active_driver)
-                yield active_driver
-            finally:
-                if active_driver is not None:
-                    try:
-                        active_driver.quit()
-                    except Exception:
-                        pass
+            # Chromium 136+ requires remote debugging to use a non-default
+            # profile. A unique directory also prevents profile-lock collisions
+            # between simultaneous Streamlit sessions.
+            with TemporaryDirectory(prefix="fundlens-chrome-") as profile_dir:
+                try:
+                    options = _mstarpy_utils.browser_options()
+                    options.add_argument(f"--user-data-dir={profile_dir}")
+                    active_driver = webdriver.Chrome(
+                        service=Service(
+                            executable_path=driver_binary,
+                            service_args=["--verbose"],
+                            log_output=sys.stderr,
+                        ),
+                        options=options,
+                    )
+                    active_drivers = getattr(_mstarpy_utils, "_active_webdrivers", None)
+                    if active_drivers is not None:
+                        active_drivers.add(active_driver)
+                    yield active_driver
+                finally:
+                    if active_driver is not None:
+                        try:
+                            active_driver.quit()
+                        except Exception:
+                            pass
 
         get_webdriver._fundlens_patched = True  # type: ignore[attr-defined]
         _mstarpy_utils.get_webdriver = get_webdriver
