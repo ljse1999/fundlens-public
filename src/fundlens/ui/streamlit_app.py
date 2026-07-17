@@ -55,8 +55,13 @@ SEVERITY_COLORS = {
 
 
 def _init_state() -> None:
+    # A query-string ISIN makes analyses linkable and gives deployment smoke
+    # tests a server-side input path that does not depend on browser key events.
+    query_isin = st.query_params.get("isin", "")
+    if isinstance(query_isin, list):
+        query_isin = query_isin[0] if query_isin else ""
     defaults = {
-        "analysis_isin": "",
+        "analysis_isin": str(query_isin).strip(),
         "analysis_result": None,
         "analysis_error": None,
         "search_results": [],
