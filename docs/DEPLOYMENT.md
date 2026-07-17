@@ -29,7 +29,8 @@ No secrets are required for the core analysis path.
 
 - 1 GB RAM, shared CPU.
 - Container sleeps after ~7 days idle (~30–60s cold start on next visit).
-- Ephemeral filesystem — `reports/` writes vanish on container recycle
+- Ephemeral filesystem — runtime caches and generated reports use writable
+  temporary directories and vanish on container recycle
   (the in-session `st.download_button` path still works).
 - "Re-run live" in the screen tab is capped at 50 funds per run.
 

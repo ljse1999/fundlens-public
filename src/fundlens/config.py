@@ -7,6 +7,7 @@ canonical directories (project root, disk-cache dir, reports dir).
 from __future__ import annotations
 
 import os
+import tempfile
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -15,13 +16,24 @@ from dotenv import load_dotenv
 
 
 def _project_root() -> Path:
-    """Resolve the project root: the parent of the ``src`` directory.
+    """Resolve the checkout root in both source and installed-package runs."""
+    explicit = os.environ.get("FUNDLENS_PROJECT_ROOT")
+    if explicit:
+        return Path(explicit).expanduser().resolve()
 
-    This file lives at ``<project_root>/src/fundlens/config.py``, so
-    ``parents[0]`` is ``fundlens``, ``parents[1]`` is ``src``, and
-    ``parents[2]`` is ``<project_root>``.
-    """
-    return Path(__file__).resolve().parents[2]
+    # Local editable/source checkout.
+    source_candidate = Path(__file__).resolve().parents[2]
+    if (source_candidate / "pyproject.toml").is_file():
+        return source_candidate
+
+    # Streamlit installs ``.`` into site-packages, so __file__ then points
+    # inside its read-only virtualenv. The process still runs from the checked
+    # out repository; find that root from cwd instead.
+    cwd = Path.cwd().resolve()
+    for candidate in (cwd, *cwd.parents):
+        if (candidate / "pyproject.toml").is_file() and (candidate / "app.py").is_file():
+            return candidate
+    return cwd
 
 
 def _load_env_chain(project_root: Path) -> None:
@@ -59,10 +71,11 @@ class Settings:
     Attributes:
         project_root: Root directory of the fundlens project (parent of ``src``).
         cache_dir: Directory used by :class:`fundlens.cache.DiskCache` for
-            on-disk caching of dataframes and JSON blobs. Defaults to
-            ``<project_root>/.cache``.
-        reports_dir: Directory where generated reports are written. Defaults
-            to ``<project_root>/reports``.
+            on-disk caching of dataframes and JSON blobs. Defaults to a
+            writable operating-system temporary directory.
+        reports_dir: Directory where generated reports are written. Also
+            defaults to the temporary directory so installed cloud packages
+            never write into their virtual environment.
     """
 
     project_root: Path
@@ -71,9 +84,15 @@ class Settings:
 
     def __post_init__(self) -> None:
         if self.cache_dir is None:
-            self.cache_dir = self.project_root / ".cache"
+            configured_cache = os.environ.get("FUNDLENS_CACHE_DIR")
+            self.cache_dir = Path(
+                configured_cache or Path(tempfile.gettempdir()) / "fundlens-cache"
+            ).expanduser().resolve()
         if self.reports_dir is None:
-            self.reports_dir = self.project_root / "reports"
+            configured_reports = os.environ.get("FUNDLENS_REPORTS_DIR")
+            self.reports_dir = Path(
+                configured_reports or Path(tempfile.gettempdir()) / "fundlens-reports"
+            ).expanduser().resolve()
 
 
 @lru_cache(maxsize=1)
