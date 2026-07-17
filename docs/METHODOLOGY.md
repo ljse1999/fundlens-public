@@ -7,8 +7,8 @@ holdings analytics, and diligence flags. It is a research-desk methodology,
 not a fund-rating product: it surfaces what's worth asking a manager, not a
 verdict.
 
-For a single ISIN, FundLens resolves the fund via Yahoo Finance, pulls its
-monthly adjusted-price history, fits it against regional Fama-French factor
+For a single ISIN, FundLens resolves the fund through its FT Markets tearsheet,
+pulls its monthly price history, fits it against regional Fama-French factor
 sets (converted into the fund's own currency), tests whether any alpha
 survives that adjustment, tracks style drift over time, computes holdings-based
 concentration and active share where disclosure allows, evaluates a fixed set
@@ -17,12 +17,11 @@ questions for a manager conversation.
 
 ## Returns
 
-Yahoo Finance resolves an ISIN to a mutual-fund/ETF symbol and supplies the
-auto-adjusted price history. Zero placeholder prices on non-valuation days are
-discarded before month-end sampling. Adjusted prices reflect Yahoo's corporate
-action adjustments but should not be treated as an independently audited NAV
-total-return index. A minimum of 24 monthly observations is required for the
-pipeline to proceed.
+FT Markets accepts an ISIN directly and supplies the fund's published price
+history. Prices are sampled at month-end and converted to decimal returns.
+Name-based searches and listed market proxies still use Yahoo Finance. Neither
+source should be treated as an independently audited NAV total-return index. A
+minimum of 24 monthly observations is required for the pipeline to proceed.
 
 ## Factors
 

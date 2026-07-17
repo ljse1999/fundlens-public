@@ -12,6 +12,7 @@ import pandas as pd
 
 from fundlens.cache import DiskCache
 from fundlens.config import get_settings
+from fundlens.data.ft_markets import FTFund, monthly_returns as ft_monthly_returns
 from fundlens.data.resolver import FundMeta
 from fundlens.data.yahoo import get_yfinance
 
@@ -93,8 +94,9 @@ def get_returns(fund: FundMeta, start: str | None = None) -> ReturnsBundle:
     cache = DiskCache(get_settings().cache_dir)
     cache_key = f"navs/{fund.isin}/monthly"
 
-    source = "yfinance"
-    series_type = "adjusted_price"
+    use_ft = fund.raw.get("provider") == "ft_markets"
+    source = "ft_markets" if use_ft else "yfinance"
+    series_type = "fund_price" if use_ft else "adjusted_price"
 
     # Prefer the cached full-history monthly series when fresh. The Series is
     # stored as a single-column DataFrame ("return") since DiskCache persists
@@ -104,9 +106,21 @@ def get_returns(fund: FundMeta, start: str | None = None) -> ReturnsBundle:
         monthly = cached["return"].copy()
     else:
         ticker = (fund.raw.get("quote") or {}).get("ticker")
-        if not ticker:
-            raise LookupError(f"no Yahoo Finance symbol available for {fund.isin!r}")
-        monthly = _yf_monthly_returns(str(ticker), start=None)
+        if use_ft:
+            ft_raw = fund.raw.get("ft_fund") or {}
+            monthly = ft_monthly_returns(
+                FTFund(
+                    isin=fund.isin,
+                    name=fund.name,
+                    currency=fund.currency,
+                    internal_symbol=str(ft_raw.get("internal_symbol") or fund.sec_id),
+                    inception_date=ft_raw.get("inception_date") or fund.inception_date,
+                )
+            )
+        else:
+            if not ticker:
+                raise LookupError(f"no Yahoo Finance symbol available for {fund.isin!r}")
+            monthly = _yf_monthly_returns(str(ticker), start=None)
         if len(monthly) >= _MIN_MONTHLY_OBS:
             cache.put_df(cache_key, monthly.rename("return").to_frame())
 
@@ -126,6 +140,7 @@ def get_returns(fund: FundMeta, start: str | None = None) -> ReturnsBundle:
         "n_obs": int(len(monthly)),
         "isin": fund.isin,
         "ticker": ticker,
+        "ft_symbol": (fund.raw.get("ft_fund") or {}).get("internal_symbol"),
     }
 
     return ReturnsBundle(

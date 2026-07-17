@@ -5,6 +5,7 @@ import pandas as pd
 
 from fundlens.cache import DiskCache
 from fundlens.config import get_settings
+from fundlens.data.ft_markets import top_holdings as ft_top_holdings
 from fundlens.data.resolver import FundMeta
 from fundlens.data.yahoo import get_yfinance
 
@@ -63,6 +64,18 @@ def _fetch_yahoo_holdings(symbol: str) -> pd.DataFrame:
     return out[HOLDINGS_COLUMNS]
 
 
+def _fetch_ft_holdings(isin: str) -> pd.DataFrame:
+    raw = ft_top_holdings(isin)
+    if raw is None or len(raw) == 0:
+        return pd.DataFrame(columns=HOLDINGS_COLUMNS)
+    out = raw.copy()
+    out["isin"] = pd.NA
+    out["sector"] = pd.NA
+    out["country"] = pd.NA
+    out["market_cap"] = pd.NA
+    return out[HOLDINGS_COLUMNS]
+
+
 def get_fund_holdings(fund: FundMeta) -> pd.DataFrame:
     """Fetch and normalise the current equity holdings for ``fund``."""
     cache = _cache()
@@ -71,10 +84,13 @@ def get_fund_holdings(fund: FundMeta) -> pd.DataFrame:
     if cached is not None:
         return cached
 
-    symbol = (fund.raw.get("quote") or {}).get("ticker")
-    if not symbol:
-        raise LookupError(f"no Yahoo Finance symbol available for {fund.isin!r}")
-    holdings = _fetch_yahoo_holdings(str(symbol))
+    if fund.raw.get("provider") == "ft_markets":
+        holdings = _fetch_ft_holdings(fund.isin)
+    else:
+        symbol = (fund.raw.get("quote") or {}).get("ticker")
+        if not symbol:
+            raise LookupError(f"no Yahoo Finance symbol available for {fund.isin!r}")
+        holdings = _fetch_yahoo_holdings(str(symbol))
     cache.put_df(cache_key, holdings)
     return holdings
 

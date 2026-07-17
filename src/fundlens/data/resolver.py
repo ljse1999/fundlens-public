@@ -12,6 +12,7 @@ import threading
 from dataclasses import dataclass
 from typing import Any
 
+from fundlens.data.ft_markets import resolve_isin
 from fundlens.data.yahoo import get_yfinance
 
 _ISIN_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
@@ -274,6 +275,31 @@ def resolve_fund(isin_or_name: str) -> FundMeta:
         LookupError: if no matching security is found.
     """
     query = isin_or_name.strip()
+    if _looks_like_isin(query):
+        ft_fund = resolve_isin(query.upper())
+        category = _infer_equity_category(ft_fund.name, {"stockPosition": 1.0})
+        return FundMeta(
+            isin=ft_fund.isin,
+            sec_id=ft_fund.internal_symbol,
+            name=ft_fund.name,
+            currency=ft_fund.currency,
+            domicile=None,
+            category=category,
+            benchmark_name=None,
+            inception_date=ft_fund.inception_date,
+            ongoing_charge=None,
+            manager_tenure_years=None,
+            security_type="fund",
+            raw={
+                "provider": "ft_markets",
+                "ft_fund": {
+                    "internal_symbol": ft_fund.internal_symbol,
+                    "inception_date": ft_fund.inception_date,
+                },
+                "quote": {},
+            },
+        )
+
     hit = _search_hit(query)
 
     isin = _first(
