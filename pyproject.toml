@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fundlens"
+version = "0.1.0"
+description = "Factor decomposition and alpha analysis toolkit for fund holdings and returns."
+requires-python = ">=3.12"
+readme = { text = "fundlens: factor decomposition and alpha analysis toolkit.", content-type = "text/plain" }
+dependencies = [
+    "pandas",
+    "numpy",
+    "statsmodels",
+    "scipy",
+    "plotly",
+    "jinja2",
+    "typer",
+    "pyarrow",
+    "platformdirs",
+    "python-dotenv",
+    "requests",
+    "pyyaml",
+    "yfinance",
+    "mstarpy",
+    "pandas-datareader",
+    "openpyxl",
+]
+
+[project.optional-dependencies]
+ui = ["streamlit"]
+dev = ["pytest", "streamlit"]
+
+[project.scripts]
+fundlens = "fundlens.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]

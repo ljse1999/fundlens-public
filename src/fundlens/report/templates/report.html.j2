@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>fundlens report: {{ header.name }}</title>
+  <style>
+    :root {
+      --bg: #f7f8fa; --card-bg: #ffffff; --text: #1a1d23; --muted: #6b7280;
+      --border: #e5e7eb;
+      --red-bg: #fdecec; --red-border: #e5484d;
+      --amber-bg: #fff6e5; --amber-border: #d9a12c;
+      --green-bg: #e9f7ee; --green-border: #2f9e58;
+      --info-bg: #eef2fb; --info-border: #4c6ef5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg); color: var(--text); margin: 0; padding: 0 0 60px 0;
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 20px; }
+    header.hero {
+      background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px;
+      padding: 20px 24px; margin-bottom: 20px;
+    }
+    header.hero h1 { margin: 0 0 4px 0; font-size: 1.5rem; }
+    header.hero .sub { color: var(--muted); margin-bottom: 12px; }
+    .meta-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px 20px; margin-top: 12px;
+    }
+    .meta-item .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.02em; }
+    .meta-item .value { font-size: 0.95rem; font-weight: 600; }
+    .verdict-strip { display: flex; align-items: center; gap: 16px; margin-top: 16px; flex-wrap: wrap; }
+    .pill {
+      display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 0.85rem; font-weight: 600;
+    }
+    .pill.red { background: var(--red-bg); color: var(--red-border); }
+    .pill.amber { background: var(--amber-bg); color: var(--amber-border); }
+    .pill.green { background: var(--green-bg); color: var(--green-border); }
+    .pill.info { background: var(--info-bg); color: var(--info-border); }
+    .counts span { margin-right: 10px; font-size: 0.85rem; color: var(--muted); }
+    section { margin-bottom: 28px; }
+    section h2 { font-size: 1.1rem; border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 14px; }
+    .card {
+      background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px;
+      margin-bottom: 20px;
+    }
+    .flag-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+    .flag-card {
+      border-radius: 8px; padding: 12px 14px; border: 1px solid var(--border); border-left-width: 5px;
+    }
+    .flag-card.red { background: var(--red-bg); border-left-color: var(--red-border); }
+    .flag-card.amber { background: var(--amber-bg); border-left-color: var(--amber-border); }
+    .flag-card.green { background: var(--green-bg); border-left-color: var(--green-border); }
+    .flag-card.info { background: var(--info-bg); border-left-color: var(--info-border); }
+    .flag-card .title { font-weight: 700; margin-bottom: 4px; }
+    .flag-card .detail { font-size: 0.9rem; color: #333; }
+    table.perf { width: 100%; border-collapse: collapse; }
+    table.perf td, table.perf th { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+    table.perf th { color: var(--muted); font-weight: 600; font-size: 0.85rem; }
+    .unavailable {
+      background: #f1f2f4; border: 1px dashed #c7c9cf; border-radius: 8px; padding: 16px;
+      color: var(--muted); font-size: 0.9rem; text-align: center;
+    }
+    .chart-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+    .questions-topic { margin-bottom: 16px; }
+    .questions-topic h3 { font-size: 0.95rem; margin-bottom: 6px; }
+    .questions-topic ol { margin: 0; padding-left: 20px; }
+    .questions-topic li { margin-bottom: 6px; }
+    .agenda-summary { font-size: 0.95rem; margin-bottom: 14px; }
+    .agenda-block { margin-bottom: 18px; }
+    .agenda-block h3 { font-size: 0.95rem; margin-bottom: 8px; }
+    .agenda-list { margin: 0; padding-left: 20px; }
+    .agenda-list li { margin-bottom: 10px; }
+    .agenda-meta { color: var(--muted); font-size: 0.85rem; margin-top: 3px; }
+    .agenda-priority {
+      display: inline-block; min-width: 58px; text-transform: uppercase; font-size: 0.7rem;
+      color: var(--muted); font-weight: 700;
+    }
+    .prov-notes { font-size: 0.85rem; color: var(--muted); }
+    .prov-notes ul { padding-left: 18px; }
+    .errors-list { font-size: 0.85rem; color: #92400e; }
+    footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top: 30px; }
+  </style>
+</head>
+<body>
+{{ plotly_js }}
+<div class="wrap">
+
+  <header class="hero">
+    <h1>{{ header.name }}</h1>
+    <div class="sub">{{ header.isin }} &middot; {{ header.currency }} &middot; {{ header.category }}</div>
+    <div class="meta-grid">
+      <div class="meta-item"><div class="label">Benchmark (stated)</div><div class="value">{{ header.benchmark_stated }}</div></div>
+      <div class="meta-item"><div class="label">Benchmark (proxy used)</div><div class="value">{{ header.benchmark_proxy }}</div></div>
+      <div class="meta-item"><div class="label">OCF</div><div class="value">{{ header.ocf }}</div></div>
+      <div class="meta-item"><div class="label">Manager tenure</div><div class="value">{{ header.manager_tenure }}</div></div>
+      <div class="meta-item"><div class="label">Analysis window</div><div class="value">{{ header.window }}</div></div>
+    </div>
+    <div class="verdict-strip">
+      {% if verdict %}
+        <span class="pill {{ verdict.severity }}">{{ verdict.title }}</span>
+      {% endif %}
+      <span class="counts">
+        <span>Red: {{ flag_counts.red }}</span>
+        <span>Amber: {{ flag_counts.amber }}</span>
+        <span>Green: {{ flag_counts.green }}</span>
+        <span>Info: {{ flag_counts.info }}</span>
+      </span>
+    </div>
+  </header>
+
+  <section id="flags">
+    <h2>Diligence flags</h2>
+    {% if flags %}
+      <div class="flag-grid">
+        {% for f in flags %}
+          <div class="flag-card {{ f.severity }}">
+            <div class="title">{{ f.title }}</div>
+            <div class="detail">{{ f.detail }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="unavailable">unavailable: no flags could be evaluated</div>
+    {% endif %}
+  </section>
+
+  <section id="performance">
+    <h2>Performance summary</h2>
+    {% if perf_table %}
+      <div class="card">
+        <table class="perf">
+          <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+          <tbody>
+            {% for row in perf_table %}
+              <tr><td>{{ row.metric }}</td><td>{{ row.value }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="unavailable">unavailable: performance summary could not be computed{% if errors.perf %} ({{ errors.perf }}){% endif %}</div>
+    {% endif %}
+  </section>
+
+  <section id="alpha-ladder">
+    <h2>Alpha ladder</h2>
+    {% if alpha_ladder.rows %}
+      <div class="card">
+        <table class="perf">
+          <thead>
+            <tr>
+              <th>Step</th>
+              <th>Residual alpha (ann.)</th>
+              <th>t-stat</th>
+              <th>p-value</th>
+              <th>Adj. R2</th>
+              <th>Residual vol.</th>
+              <th>Obs</th>
+              <th>Window</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in alpha_ladder.rows %}
+              <tr>
+                <td>{{ row.step }}</td>
+                <td>{{ row.alpha_ann }}</td>
+                <td>{{ row.alpha_t }}</td>
+                <td>{{ row.alpha_p }}</td>
+                <td>{{ row.r2 }}</td>
+                <td>{{ row.resid_vol_ann }}</td>
+                <td>{{ row.nobs }}</td>
+                <td>{{ row.window }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="prov-notes">
+          {% if alpha_ladder.verdict %}
+            <p><strong>Alpha ladder verdict:</strong> {{ alpha_ladder.verdict }}</p>
+          {% endif %}
+          {% if alpha_ladder.selected_proxies %}
+            <p><strong>Selected proxies:</strong>
+              {% for proxy in alpha_ladder.selected_proxies %}
+                {{ proxy.ticker }} ({{ proxy.reason }}){% if not loop.last %}, {% endif %}
+              {% endfor %}
+            </p>
+          {% endif %}
+          <p>FF5+MOM alpha controls broad academic equity factors. Benchmark residual alpha controls only the selected benchmark proxy; sector, country, currency, and theme exposures may still be omitted.</p>
+          {% if alpha_ladder.warnings %}
+            <ul>
+              {% for warning in alpha_ladder.warnings %}
+                <li>{{ warning }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </div>
+      </div>
+    {% else %}
+      <div class="unavailable">unavailable: alpha ladder could not be computed</div>
+    {% endif %}
+  </section>
+
+  <section id="charts">
+    <h2>Charts</h2>
+    <div class="chart-grid">
+      {% for key, chart in charts.items() %}
+        <div class="card">
+          {% if chart.available %}
+            {{ chart.html }}
+          {% else %}
+            <div class="unavailable">unavailable: {{ chart.reason }}</div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section id="questions">
+    {% if dd_agenda %}
+      <h2>Manager DD agenda</h2>
+      <div class="card">
+        <p class="agenda-summary">{{ dd_agenda.summary }}</p>
+
+        {% if dd_agenda.anomalies %}
+          <div class="agenda-block">
+            <h3>Anomalies to probe</h3>
+            <ol class="agenda-list">
+              {% for item in dd_agenda.anomalies %}
+                <li>
+                  <span class="agenda-priority">{{ item.priority }}</span>
+                  <strong>{{ item.title }}</strong>
+                  <div>{{ item.evidence }}</div>
+                  <div class="agenda-meta">{{ item.framework_section }} &middot; {{ item.why_it_matters }}</div>
+                </li>
+              {% endfor %}
+            </ol>
+          </div>
+        {% endif %}
+
+        {% if dd_agenda.priority_questions %}
+          <div class="agenda-block">
+            <h3>Priority manager questions</h3>
+            <ol class="agenda-list">
+              {% for q in dd_agenda.priority_questions %}
+                <li>
+                  <span class="agenda-priority">{{ q.priority }}</span>
+                  <strong>{{ q.topic }}</strong>
+                  <div>{{ q.question }}</div>
+                  <div class="agenda-meta">Follow-up if evasive: {{ q.follow_up_if_evasive }}</div>
+                  <div class="agenda-meta">Evidence ask: {{ q.evidence_request }}</div>
+                  {% if q.evidence_used %}
+                    <div class="agenda-meta">Evidence used: {{ q.evidence_used | join(', ') }}</div>
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ol>
+          </div>
+        {% endif %}
+
+        {% if dd_agenda.evidence_requests %}
+          <div class="agenda-block">
+            <h3>Evidence requests</h3>
+            <ol class="agenda-list">
+              {% for req in dd_agenda.evidence_requests %}
+                <li>
+                  <span class="agenda-priority">{{ req.priority }}</span>
+                  {{ req.request }}
+                  <div class="agenda-meta">{{ req.linked_topic }}</div>
+                </li>
+              {% endfor %}
+            </ol>
+          </div>
+        {% endif %}
+
+        {% if dd_agenda.data_gaps %}
+          <div class="agenda-block">
+            <h3>Data gaps</h3>
+            <ul class="agenda-list">
+              {% for gap in dd_agenda.data_gaps %}
+                <li>{{ gap }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+
+        {% if dd_agenda.tripwires %}
+          <div class="agenda-block">
+            <h3>Tripwires</h3>
+            <ol class="agenda-list">
+              {% for tripwire in dd_agenda.tripwires %}
+                <li>
+                  <strong>{{ tripwire.metric }}</strong>: {{ tripwire.proposed_level }}
+                  <div class="agenda-meta">Breach action: {{ tripwire.breach_action }}</div>
+                  <div class="agenda-meta">{{ tripwire.rationale }}</div>
+                </li>
+              {% endfor %}
+            </ol>
+          </div>
+        {% endif %}
+      </div>
+    {% else %}
+      <h2>Questions for the manager</h2>
+      {% if questions_by_topic %}
+      {% for topic, qs in questions_by_topic.items() %}
+        <div class="questions-topic">
+          <h3>{{ topic }}</h3>
+          <ol>
+            {% for q in qs %}
+              <li>{{ q.question }}</li>
+            {% endfor %}
+          </ol>
+        </div>
+      {% endfor %}
+      {% else %}
+        <div class="unavailable">no follow-up questions were generated (no red/amber flags fired, or flags unavailable)</div>
+      {% endif %}
+    {% endif %}
+  </section>
+
+  <section id="provenance">
+    <h2>Provenance &amp; appendix</h2>
+    <div class="card prov-notes">
+      <p><strong>Data range:</strong> {{ provenance.get('date_range', ['n/a', 'n/a'])[0] }} to {{ provenance.get('date_range', ['n/a', 'n/a'])[1] }} ({{ provenance.get('n_obs', 'n/a') }} monthly observations)</p>
+      <p><strong>Currency:</strong> {{ provenance.get('currency', 'n/a') }}</p>
+      <p><strong>Factor region:</strong> {{ provenance.get('factor_region', 'n/a') }}</p>
+      <p><strong>Benchmark proxy:</strong> {{ provenance.get('benchmark_proxy', 'n/a') }}</p>
+      {% if provenance.get('notes') %}
+        <p><strong>Conventions:</strong></p>
+        <ul>
+          {% for note in provenance.get('notes') %}
+            <li>{{ note }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      {% if errors %}
+        <p><strong>Sections unavailable:</strong></p>
+        <ul class="errors-list">
+          {% for stage, msg in errors.items() %}
+            <li>{{ stage }}: {{ msg }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+  </section>
+
+  <footer>Generated by fundlens.</footer>
+</div>
+</body>
+</html>
