@@ -669,12 +669,10 @@ def _snapshot_branch(alpha_t_threshold: float, alpha_p_threshold: float) -> None
     """
     from fundlens.data.snapshot import load_ia_snapshot
 
-    # Snapshot lives in <repo_root>/data.
-    repo_root = Path(__file__).resolve().parents[3]
-    data_dir = repo_root / "data"
-
+    # Snapshot ships inside the package (src/fundlens/data/snapshot_data/) so it
+    # resolves identically under editable, wheel, and Streamlit Cloud installs.
     try:
-        snapshot_df = load_ia_snapshot(data_dir)
+        snapshot_df = load_ia_snapshot()
     except FileNotFoundError as exc:
         st.error(f"Snapshot not available: {exc}")
         return

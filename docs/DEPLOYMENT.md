@@ -38,8 +38,8 @@ No secrets are required for the core analysis path.
 After refreshing the source data:
 
 ```bash
-python scripts/build_snapshot.py --funds <new-triaged-csv> --screen <new-checkpoint-csv> --out data
-git add data/
+python scripts/build_snapshot.py --funds <new-triaged-csv> --screen <new-checkpoint-csv>
+git add src/fundlens/data/snapshot_data/
 git commit -m "Refresh IA snapshot"
 git push
 ```

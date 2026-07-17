@@ -38,13 +38,20 @@ SCREEN_COLUMNS = [
     "flags",
 ]
 
+#: Directory holding the committed snapshot files. Resolved relative to this
+#: module so it works under any install mode (editable, wheel, Streamlit Cloud).
+SNAPSHOT_DIR = Path(__file__).with_name("snapshot_data")
 
-def load_ia_snapshot(data_dir: Path | str) -> pd.DataFrame:
+
+def load_ia_snapshot(data_dir: Path | str | None = None) -> pd.DataFrame:
     """Load and join the IA fund list and alpha-screen snapshots.
 
     Args:
         data_dir: Directory containing ``ia_funds.csv`` and (optionally)
-            ``ia_screen_results.parquet``.
+            ``ia_screen_results.parquet``. Defaults to the package-bundled
+            ``snapshot_data/`` directory shipped inside the wheel, so callers
+            don't need to compute repo paths (which differ across editable,
+            wheel, and Streamlit Cloud installs).
 
     Returns:
         A DataFrame keyed by ``isin``. Every fund in ``ia_funds.csv`` appears
@@ -55,6 +62,8 @@ def load_ia_snapshot(data_dir: Path | str) -> pd.DataFrame:
     Raises:
         FileNotFoundError: if ``ia_funds.csv`` does not exist in ``data_dir``.
     """
+    if data_dir is None:
+        data_dir = SNAPSHOT_DIR
     data_dir = Path(data_dir)
     funds_path = data_dir / "ia_funds.csv"
     if not funds_path.exists():

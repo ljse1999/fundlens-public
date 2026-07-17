@@ -36,3 +36,13 @@ fundlens = "fundlens.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# Ship non-.py resources inside the wheel. Without this, a wheel install
+# (e.g. on Streamlit Cloud, which runs `pip install -r requirements.txt`)
+# omits benchmark_map.yaml, the report template, and the IA snapshot —
+# breaking benchmarks, the Analyse tab's HTML report, and the Snapshot
+# screen source. The `.py` files are included automatically; this declares
+# the data files explicitly.
+[tool.setuptools.package-data]
+"fundlens.data" = ["*.yaml", "snapshot_data/*"]
+"fundlens.report" = ["templates/*.j2"]

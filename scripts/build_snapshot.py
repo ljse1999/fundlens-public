@@ -3,8 +3,8 @@
 Reads the source repo's triaged resolution CSV and the alpha-screen checkpoint
 CSV, cleans them down to public columns, and writes:
 
-  - ``data/ia_funds.csv``               (fund universe)
-  - ``data/ia_screen_results.parquet``  (alpha-screen results)
+  - ``src/fundlens/data/snapshot_data/ia_funds.csv``               (fund universe)
+  - ``src/fundlens/data/snapshot_data/ia_screen_results.parquet``  (alpha-screen results)
 
 Run from the target repo (fundlens-public) after refreshing the source data:
 
@@ -90,8 +90,9 @@ def main() -> None:
     p.add_argument(
         "--out",
         type=Path,
-        default=Path("data"),
-        help="Output directory (default: ./data)",
+        default=Path("src/fundlens/data/snapshot_data"),
+        help="Output directory (default: src/fundlens/data/snapshot_data, so the "
+        "snapshot ships inside the package and resolves under any install mode)",
     )
     args = p.parse_args()
     build(args.funds, args.screen, args.out)
