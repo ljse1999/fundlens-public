@@ -2,10 +2,10 @@
 
 ## One-time setup
 
-1. Push this repo to GitHub (`github.com/YOUR-USERNAME/fundlens-public`).
+1. Push this repo to GitHub (`github.com/ljse1999/fundlens-public`).
 2. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub.
 3. Click **New app**, select:
-   - **Repository:** `YOUR-USERNAME/fundlens-public`
+   - **Repository:** `ljse1999/fundlens-public`
    - **Branch:** `main`
    - **Main file path:** `app.py`
 4. Click **Deploy**. Streamlit Cloud installs from `requirements.txt` and uses

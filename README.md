@@ -33,7 +33,7 @@ funds with pre-computed alpha metrics.
 ## Self-hosting
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/fundlens-public.git
+git clone https://github.com/ljse1999/fundlens-public.git
 cd fundlens-public
 pip install -r requirements.txt
 streamlit run app.py
