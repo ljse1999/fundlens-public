@@ -10,6 +10,7 @@ import pandas as pd
 
 from fundlens.cache import DiskCache
 from fundlens.config import get_settings
+from fundlens.data.yahoo import get_yfinance
 
 _CACHE_TTL_DAYS = 7
 
@@ -51,7 +52,7 @@ def get_fx(quote: str, base: str = "USD", freq: str = "M") -> pd.Series:
     if cached is not None:
         return cached.iloc[:, 0]
 
-    import yfinance as yf
+    yf = get_yfinance()
 
     symbol = f"{base}{quote}=X"
     data = yf.download(symbol, period="max", auto_adjust=True, progress=False, actions=False)

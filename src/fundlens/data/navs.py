@@ -13,6 +13,7 @@ import pandas as pd
 from fundlens.cache import DiskCache
 from fundlens.config import get_settings
 from fundlens.data.resolver import FundMeta
+from fundlens.data.yahoo import get_yfinance
 
 _MIN_MONTHLY_OBS = 36
 # NAV history is appended monthly; cache the full history for a week so a
@@ -54,7 +55,7 @@ def _nav_index_to_returns(nav_list: list[dict], field: str = "totalReturn") -> p
 
 def _yf_monthly_returns(ticker: str, start: str | None) -> pd.Series:
     """Month-end decimal returns from yfinance adjusted close for ``ticker``."""
-    import yfinance as yf
+    yf = get_yfinance()
 
     if start:
         data = yf.download(

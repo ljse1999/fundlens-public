@@ -12,6 +12,8 @@ import threading
 from dataclasses import dataclass
 from typing import Any
 
+from fundlens.data.yahoo import get_yfinance
+
 _ISIN_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
 
 # Process-wide search session. Reuse HTTP connections across Streamlit reruns.
@@ -27,7 +29,7 @@ class YahooSearchSession:
         if not query:
             return {"results": [], "count": 0, "pages": 0}
 
-        import yfinance as yf
+        yf = get_yfinance()
 
         # yfinance manages Yahoo's crumb/cookie flow and is materially more
         # reliable than calling query2 directly, which quickly returns 429.
@@ -290,7 +292,7 @@ def resolve_fund(isin_or_name: str) -> FundMeta:
         raise LookupError(f"could not resolve a Yahoo Finance symbol for {isin!r}")
 
     try:
-        import yfinance as yf
+        yf = get_yfinance()
 
         ticker = yf.Ticker(str(symbol))
         info = ticker.info or {}

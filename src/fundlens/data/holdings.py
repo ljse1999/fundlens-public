@@ -6,6 +6,7 @@ import pandas as pd
 from fundlens.cache import DiskCache
 from fundlens.config import get_settings
 from fundlens.data.resolver import FundMeta
+from fundlens.data.yahoo import get_yfinance
 
 # Contract columns shared by both functions below.
 HOLDINGS_COLUMNS = ["ticker", "isin", "name", "weight", "sector", "country", "market_cap"]
@@ -39,7 +40,7 @@ def _normalise(raw: pd.DataFrame) -> pd.DataFrame:
 def _fetch_yahoo_holdings(symbol: str) -> pd.DataFrame:
     """Return Yahoo's disclosed top holdings in FundLens contract form."""
     try:
-        import yfinance as yf
+        yf = get_yfinance()
 
         raw = yf.Ticker(symbol).funds_data.top_holdings
     except Exception as exc:  # noqa: BLE001 - surface a clear message

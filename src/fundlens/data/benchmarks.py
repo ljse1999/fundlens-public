@@ -14,6 +14,7 @@ import yaml
 from fundlens.cache import DiskCache
 from fundlens.config import get_settings
 from fundlens.data.resolver import FundMeta
+from fundlens.data.yahoo import get_yfinance
 
 BENCHMARK_MAP_PATH = str(Path(__file__).with_name("benchmark_map.yaml"))
 
@@ -54,7 +55,7 @@ def _cache() -> DiskCache:
 
 
 def _yf_close(ticker: str) -> pd.Series:
-    import yfinance as yf
+    yf = get_yfinance()
 
     data = yf.download(ticker, period="max", auto_adjust=True, progress=False, actions=False)
     if data is None or len(data) == 0:

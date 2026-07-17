@@ -10,6 +10,8 @@ import time
 import numpy as np
 import pandas as pd
 
+from fundlens.data.yahoo import get_yfinance
+
 _TOP_N = 25
 _SLEEP_SECONDS = 0.2
 
@@ -39,7 +41,7 @@ def enrich_holdings(holdings: pd.DataFrame) -> pd.DataFrame:
         return result
 
     try:
-        import yfinance as yf
+        yf = get_yfinance()
     except Exception:  # noqa: BLE001 - enrichment is optional
         return result
 

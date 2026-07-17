@@ -4,7 +4,18 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from fundlens.data import holdings, navs
+from fundlens.data import holdings, navs, yahoo
+
+
+def test_yfinance_uses_explicit_writable_cache(tmp_path):
+    target = tmp_path / "yf-cache"
+
+    yf = yahoo.get_yfinance(target)
+
+    assert target.is_dir()
+    assert yf.cache._TzDBManager.get_location() == str(target.resolve())
+    assert yf.cache._CookieDBManager.get_location() == str(target.resolve())
+    assert yf.cache._ISINDBManager.get_location() == str(target.resolve())
 
 
 def test_yahoo_returns_ignore_zero_placeholders(monkeypatch):
