@@ -6,6 +6,7 @@ canonical directories (project root, disk-cache dir, reports dir).
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -24,19 +25,29 @@ def _project_root() -> Path:
 
 
 def _load_env_chain(project_root: Path) -> None:
-    """Load .env files in order; earlier files win (do not override already-set vars).
+    """Populate ``os.environ`` from Streamlit Cloud secrets, then local ``.env`` files.
 
-    Order:
-      1. ``<project_root>/.env``
-      2. ``C:/Users/hp/research_tools/.env``
-      3. ``~/.env``
+    Order (later sources do not override already-set vars):
+
+    1. ``st.secrets`` — used when running under Streamlit Community Cloud.
+       The maintainer pastes API keys into the Cloud dashboard's "Secrets" panel;
+       they never live in git.
+    2. ``<project_root>/.env`` — local development.
+    3. ``~/.env`` — local development fallback.
     """
-    candidates = [
-        project_root / ".env",
-        Path("C:/Users/hp/research_tools/.env"),
-        Path.home() / ".env",
-    ]
-    for candidate in candidates:
+    # Streamlit Cloud: read st.secrets into os.environ (highest priority).
+    try:
+        import streamlit as st  # type: ignore[import-not-found]
+
+        if hasattr(st, "secrets"):
+            for key, value in dict(st.secrets).items():
+                os.environ.setdefault(key, str(value))
+    except Exception:
+        # Not running under Streamlit, or streamlit not installed.
+        pass
+
+    # Local development fallback.
+    for candidate in (project_root / ".env", Path.home() / ".env"):
         if candidate.exists():
             load_dotenv(dotenv_path=candidate, override=False)
 
@@ -69,9 +80,9 @@ class Settings:
 def get_settings() -> Settings:
     """Return the process-wide cached :class:`Settings` instance.
 
-    On first call, loads environment variables from the ``.env`` chain
-    (project root, then ``research_tools``, then home directory) before
-    constructing the settings object.
+    On first call, loads environment variables from the ``st.secrets`` chain
+    (when running under Streamlit Cloud), then the ``.env`` chain
+    (project root, then home directory) before constructing the settings object.
     """
     root = _project_root()
     _load_env_chain(root)
