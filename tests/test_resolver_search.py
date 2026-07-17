@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-import signal
-import threading
-from types import SimpleNamespace
-
 from fundlens.data import resolver
 
 
@@ -59,29 +55,24 @@ def test_benchmark_name_prefers_prospectus_index_over_category_index():
     assert resolver._benchmark_name(meta) == "S&P Global Small TR USD"
 
 
-def test_get_mstarpy_can_import_from_worker_thread(monkeypatch):
-    monkeypatch.setattr(resolver, "_MSTARPY", None)
-    monkeypatch.setattr(resolver, "_SESSION", None)
+def test_yahoo_session_maps_isin_to_fund_result(monkeypatch):
+    class Search:
+        def __init__(self, *args, **kwargs):
+            self.quotes = [
+                    {
+                        "symbol": "0P0000RU81.L",
+                        "quoteType": "MUTUALFUND",
+                        "longname": "Fundsmith Equity I Acc",
+                        "exchange": "LSE",
+                    }
+                ]
 
-    def fake_import_module(name):
-        assert name == "mstarpy"
-        signal.signal(signal.SIGTERM, lambda _sig, _frame: None)
-        return SimpleNamespace(MorningstarSession=object)
+    session = resolver.YahooSearchSession()
+    monkeypatch.setattr("yfinance.Search", Search)
 
-    monkeypatch.setattr(resolver.importlib, "import_module", fake_import_module)
+    payload = session.general_search({"q": "GB00B41YBW71", "limit": 5})
+    value = payload["results"][0]["value"]
 
-    imported = []
-    errors = []
-
-    def target():
-        try:
-            imported.append(resolver.get_mstarpy())
-        except Exception as exc:  # noqa: BLE001 - surfaced in assertion below
-            errors.append(exc)
-
-    thread = threading.Thread(target=target)
-    thread.start()
-    thread.join()
-
-    assert errors == []
-    assert imported and imported[0].MorningstarSession is object
+    assert value["isin"] == "GB00B41YBW71"
+    assert value["ticker"] == "0P0000RU81.L"
+    assert value["investmentType"] == "FO"

@@ -1,32 +1,22 @@
 """Fetch NAV-derived return series for a resolved fund.
 
-Primary source is mstarpy's ``Funds.nav(..., "monthly")``, which returns a list
-of ``{"nav", "totalReturn", "date"}`` dicts. We use the ``totalReturn`` field:
-this is Morningstar's total-return-reinvested NAV *index* (distributions
-reinvested), so period returns computed from it are total returns, not
-price-only returns. Requesting from 1990-01-01 clips to the fund's inception.
-
-If mstarpy yields fewer than 36 monthly observations and the fund has a listed
-ticker (e.g. ETFs), we fall back to yfinance adjusted-close returns.
+The public deployment uses Yahoo Finance adjusted prices. Mutual-fund ISINs are
+resolved to Yahoo symbols first, so this path does not require Morningstar's
+browser/WAF session.
 """
 from __future__ import annotations
 
-import datetime as dt
-import time
 from dataclasses import dataclass
 
 import pandas as pd
 
 from fundlens.cache import DiskCache
 from fundlens.config import get_settings
-from fundlens.data.resolver import FundMeta, get_mstarpy, get_session
+from fundlens.data.resolver import FundMeta
 
 _MIN_MONTHLY_OBS = 36
-_MIN_MONTHLY_OBS_RETRY = 24
-_NAV_FETCH_ATTEMPTS = 3
-_NAV_FETCH_RETRY_SLEEP_SECS = 3
 # NAV history is appended monthly; cache the full history for a week so a
-# resumed/re-run screen skips the expensive per-fund Morningstar fetches.
+# resumed/re-run screen skips the per-fund provider fetch.
 _CACHE_TTL_DAYS = 7
 
 
@@ -79,6 +69,10 @@ def _yf_monthly_returns(ticker: str, start: str | None) -> pd.Series:
     close = data["Close"]
     if isinstance(close, pd.DataFrame):
         close = close.iloc[:, 0]
+    close = pd.to_numeric(close, errors="coerce")
+    # Some London mutual-fund feeds publish zero placeholders on non-valuation
+    # days. Treat them as missing rather than as a total loss/recovery.
+    close = close.where(close > 0).dropna()
     monthly = close.resample("ME").last()
     return monthly.pct_change().dropna()
 
@@ -86,64 +80,36 @@ def _yf_monthly_returns(ticker: str, start: str | None) -> pd.Series:
 def get_returns(fund: FundMeta, start: str | None = None) -> ReturnsBundle:
     """Fetch decimal monthly (and, if cheap, daily) period returns for ``fund``.
 
-    Returns a :class:`ReturnsBundle`. The monthly series is a *total return*
-    series derived from Morningstar's reinvested NAV index. Daily data is left
-    as ``None`` (fetching full-history daily NAV is expensive and not required
-    downstream); the field is retained for future use.
+    Returns a :class:`ReturnsBundle`. The monthly series uses Yahoo Finance's
+    auto-adjusted prices. Daily data is left as ``None`` because it is not
+    required downstream.
 
     The full-history monthly series is cached on disk keyed by ISIN for
     ``_CACHE_TTL_DAYS`` days, so resumed or re-run screens skip the expensive
-    per-fund Morningstar NAV fetch. The ``start`` clip is applied after the
+    per-fund provider fetch. The ``start`` clip is applied after the
     cache lookup, so the same cached history serves any date window.
     """
     cache = DiskCache(get_settings().cache_dir)
     cache_key = f"navs/{fund.isin}/monthly"
 
-    start_date = dt.date(1990, 1, 1)
-    end_date = dt.date.today()
-
-    source = "mstarpy"
-    series_type = "total_return"
+    source = "yfinance"
+    series_type = "adjusted_price"
 
     # Prefer the cached full-history monthly series when fresh. The Series is
     # stored as a single-column DataFrame ("return") since DiskCache persists
     # via to_parquet, which is DataFrame-only.
     cached = cache.get_df(cache_key, _CACHE_TTL_DAYS)
-    if cached is not None and "return" in cached.columns and len(cached) >= _MIN_MONTHLY_OBS_RETRY:
+    if cached is not None and "return" in cached.columns and len(cached) >= _MIN_MONTHLY_OBS:
         monthly = cached["return"].copy()
     else:
-        monthly = pd.Series(dtype=float)
-        for attempt in range(_NAV_FETCH_ATTEMPTS):
-            try:
-                mstarpy = get_mstarpy()
-                fund_obj = mstarpy.Funds(fund.isin, session=get_session())
-                nav_list = fund_obj.nav(start_date, end_date, "monthly") or []
-            except Exception:  # noqa: BLE001 - treat as empty and retry/fall through
-                nav_list = []
-
-            monthly = _nav_index_to_returns(nav_list, "totalReturn")
-            if len(monthly) >= _MIN_MONTHLY_OBS_RETRY:
-                break
-            if attempt < _NAV_FETCH_ATTEMPTS - 1:
-                # mstarpy/Morningstar intermittently returns an empty (or truncated)
-                # NAV list for a valid ISIN; retry with a fresh Funds object rather
-                # than silently accepting a transient empty result.
-                time.sleep(_NAV_FETCH_RETRY_SLEEP_SECS)
-
-        # Persist the freshly-fetched full history so resume/re-run is cheap.
-        # Only cache mstarpy results with enough observations to be useful; the
-        # yfinance fallback below is a per-call decision, not cached here.
-        # Store as a single-column DataFrame because DiskCache uses to_parquet.
-        if len(monthly) >= _MIN_MONTHLY_OBS_RETRY:
+        ticker = (fund.raw.get("quote") or {}).get("ticker")
+        if not ticker:
+            raise LookupError(f"no Yahoo Finance symbol available for {fund.isin!r}")
+        monthly = _yf_monthly_returns(str(ticker), start=None)
+        if len(monthly) >= _MIN_MONTHLY_OBS:
             cache.put_df(cache_key, monthly.rename("return").to_frame())
 
     ticker = (fund.raw.get("quote") or {}).get("ticker")
-    if len(monthly) < _MIN_MONTHLY_OBS and ticker:
-        yf_monthly = _yf_monthly_returns(ticker, start=None)
-        if len(yf_monthly) > len(monthly):
-            monthly = yf_monthly
-            source = "yfinance"
-            series_type = "price"  # yfinance auto-adjusted (dividends reinvested via adj close)
 
     if start:
         cutoff = pd.Timestamp(start)

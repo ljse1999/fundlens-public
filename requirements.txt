@@ -11,7 +11,6 @@ python-dotenv==1.2.2
 requests==2.32.5
 pyyaml==6.0.3
 yfinance==1.2.0
-mstarpy==11.0.1
 pandas-datareader==0.11.1
 openpyxl==3.1.5
 streamlit==1.52.1

@@ -7,8 +7,8 @@ holdings analytics, and diligence flags. It is a research-desk methodology,
 not a fund-rating product: it surfaces what's worth asking a manager, not a
 verdict.
 
-For a single ISIN, FundLens resolves the fund via Morningstar, pulls its
-monthly total-return history, fits it against regional Fama-French factor
+For a single ISIN, FundLens resolves the fund via Yahoo Finance, pulls its
+monthly adjusted-price history, fits it against regional Fama-French factor
 sets (converted into the fund's own currency), tests whether any alpha
 survives that adjustment, tracks style drift over time, computes holdings-based
 concentration and active share where disclosure allows, evaluates a fixed set
@@ -17,15 +17,12 @@ questions for a manager conversation.
 
 ## Returns
 
-Monthly total-return NAVs come from Morningstar via mstarpy
-(`Funds.nav(..., "monthly")`, `totalReturn` field — i.e. distributions
-reinvested, not price-only). Empty/truncated NAV responses are retried (up to
-3 attempts, 3s apart) since Morningstar intermittently returns an empty list
-for a valid ISIN. If fewer than 36 monthly observations come back and the
-fund/ETF has a listed ticker, returns fall back to yfinance adjusted-close
-(price series, dividends reflected via adjustment, not a true reinvested
-total return). A minimum of 24 monthly observations is required for the
-pipeline to proceed at all.
+Yahoo Finance resolves an ISIN to a mutual-fund/ETF symbol and supplies the
+auto-adjusted price history. Zero placeholder prices on non-valuation days are
+discarded before month-end sampling. Adjusted prices reflect Yahoo's corporate
+action adjustments but should not be treated as an independently audited NAV
+total-return index. A minimum of 24 monthly observations is required for the
+pipeline to proceed.
 
 ## Factors
 
@@ -33,8 +30,8 @@ Regional Fama-French 5-factor + momentum sets (`MKT_RF`, `SMB`, `HML`, `RMW`,
 `CMA`, `MOM`, `RF`) come from Ken French's data library via
 `pandas_datareader`. The region (`developed`, `developed_ex_us`, `europe`,
 `japan`, `asia_pacific_ex_japan`, `north_america`, `emerging`, or `us`) is
-chosen from the fund's Morningstar category via specific-first substring
-matching (`developed` is the default/global fallback), or can be overridden
+chosen from the provider category (with a coarse name/asset-class inference
+when Yahoo omits it; `developed` is the default/global fallback), or can be overridden
 in the UI. These are all regional five-factor-plus-momentum pairs currently
 published in the library; emerging-market factors are monthly only.
 
@@ -81,16 +78,14 @@ alpha.
 
 ## Universe alpha screen
 
-The screen uses Morningstar's public search endpoint as a candidate source,
-applies UK/Europe inclusion locally from ISIN country prefixes or
-exchange-country codes, then resolves each candidate through the normal
-metadata/returns stack. The screen path deliberately skips
+The public app's broad screen uses the bundled, pre-resolved IA snapshot.
+Focused live searches use Yahoo Finance and then resolve candidates through
+the normal metadata/returns stack. The screen path deliberately skips
 holdings/style/report sections and fits only the FF5+MOM alpha model, so it
 is practical for a candidate universe. A row is marked `genuine_alpha` only
 when the FF5+MOM alpha t-stat is above 2.0 and the bootstrap p-value is below
-0.05, matching the green `alpha_verdict` rule. Morningstar category filtering
-is applied after resolution because the current public search endpoint does
-not reliably honour category or domicile filters.
+0.05, matching the green `alpha_verdict` rule. Category filtering is applied
+after resolution.
 
 ## Style analysis
 
@@ -159,9 +154,9 @@ run through the pipeline, not treated as settled.
 
 ## Caveats and data-quality notes
 
-- **Backfilled share-class history.** Morningstar can backfill NAV history for
-  newer share classes from an older, related one. Treat very long histories
-  on newer share classes with some suspicion.
+- **Provider history can differ from the legal share class.** Check inception
+  dates and the first observed price before treating a long history as the
+  exact live share-class record.
 - **Partial holdings disclosure varies widely.** Some funds publish top-10
   holdings only, covering roughly half the portfolio. Active share, tilts,
   and concentration metrics degrade gracefully under this (see above) but are
@@ -182,10 +177,9 @@ run through the pipeline, not treated as settled.
   academic, broad-market constructions. Japan has its own set, but other
   single-country funds map to the nearest broad region, which can still
   under-explain country-specific exposure.
-- **Transient empty Morningstar responses are retried**, not silently
-  accepted. Persistent empty responses still surface as a hard failure (fund
-  resolution and the returns fetch are the only two pipeline stages that are
-  fatal; everything else degrades to a recorded error and a partial report).
+- **Provider failures surface explicitly.** Fund resolution and the returns
+  fetch are the only two fatal pipeline stages; later stages degrade to a
+  recorded error and a partial report.
 - **Disk cache TTLs** (parquet + JSON, keyed by logical path, each with a
   timestamp sidecar): factors 7 days, FX/risk-free 7 days, benchmark and
   style-proxy returns 1 day, holdings 30 days. Delete a cache file (or the

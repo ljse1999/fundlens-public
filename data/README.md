@@ -50,4 +50,5 @@ git commit -m "Refresh IA snapshot"
 ## Live data
 
 The screen tab's "Re-run live" button bypasses this snapshot and fetches fresh
-data from Morningstar/yfinance. Capped at 50 funds per run on Streamlit Cloud.
+data from Yahoo Finance and the factor sources. It is capped at 50 funds per
+run on Streamlit Cloud.

@@ -22,7 +22,6 @@ dependencies = [
     "requests",
     "pyyaml",
     "yfinance",
-    "mstarpy",
     "pandas-datareader",
     "openpyxl",
 ]

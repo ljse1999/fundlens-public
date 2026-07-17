@@ -39,8 +39,8 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Python 3.12+ required. No API keys needed for the core analysis path
-(mstarpy, yfinance, Ken French, FRED-basic all work keyless).
+Python 3.12+ required. No API keys are needed for the core analysis path
+(Yahoo Finance, Ken French, and FRED-basic all work keyless).
 
 ### Optional API keys (enrichment only)
 

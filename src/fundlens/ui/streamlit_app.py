@@ -721,7 +721,7 @@ def _snapshot_branch(alpha_t_threshold: float, alpha_p_threshold: float) -> None
     # Live re-run affordance (capped at 50 funds — Cloud free-tier guardrail).
     if st.button("Re-run live (selected funds)", type="secondary"):
         st.info(
-            "Live re-run hits Morningstar/yfinance per fund and is capped at 50 funds "
+            "Live re-run hits Yahoo Finance per fund and is capped at 50 funds "
             "to stay within Streamlit Cloud resource limits."
         )
 
@@ -730,7 +730,7 @@ def _screen_tab() -> None:
     st.markdown("### Screen funds")
     source = st.radio(
         "Source",
-        ["Snapshot", "Morningstar universe", "IA workbook", "Manual list"],
+        ["Snapshot", "Yahoo search", "IA workbook", "Manual list"],
         horizontal=True,
     )
     alpha_t_threshold, alpha_p_threshold = _alpha_threshold_controls()
@@ -740,7 +740,7 @@ def _screen_tab() -> None:
         return
     if source == "IA workbook":
         _ia_workbook_branch()
-    elif source == "Morningstar universe":
+    elif source == "Yahoo search":
         controls = st.columns(5)
         with controls[0]:
             max_candidates = st.number_input("Candidate limit", min_value=1, max_value=10000, value=100, step=25)
@@ -762,6 +762,9 @@ def _screen_tab() -> None:
             term = st.text_input("Search term", value="")
 
         if st.button("Run universe screen", type="primary"):
+            if not term.strip():
+                st.error("Enter a fund name or ISIN for a focused Yahoo search.")
+                return
             progress = st.progress(0.0)
             status = st.empty()
 

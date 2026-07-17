@@ -129,7 +129,7 @@ def analyse_fund(
     provenance["end"] = str(monthly.index.max().date())
     provenance["benchmark_stated"] = fund.benchmark_name
     provenance["notes"] = [
-        "Morningstar may backfill older share-class history.",
+        "Yahoo adjusted-price history may not exactly match the legal share-class NAV record.",
         "Active share is a lower bound under partial holdings coverage.",
         "FF5+MOM alpha does not neutralise sector, country, currency, or theme exposures; "
         "benchmark residual alpha only controls for the selected benchmark proxy.",

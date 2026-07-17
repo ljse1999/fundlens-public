@@ -1,86 +1,96 @@
 """Resolve a fund/ISIN/name to canonical metadata.
 
-Uses mstarpy (Morningstar) as the primary provider. Resolution flow:
-
-1. ``MorningstarSession.general_search`` on the raw input (ISIN or name) to
-   locate the security and its provider ids.
-2. ``Funds(isin, session=...)`` then ``.metaData()``, ``.quote(2)`` and
-   ``.people()`` to populate the canonical :class:`FundMeta` fields.
-
-Several fields are ``None`` on ``metaData()`` for some share classes but are
-reliably present on ``quote(2)`` (ongoing charge, category name) or
-``people()`` (inception date, manager tenure), so those endpoints are used as
-fallbacks.
+Yahoo Finance is the primary provider. Its public search endpoint resolves an
+ISIN or name to a mutual-fund/ETF symbol, and yfinance supplies metadata. This
+keeps the public Streamlit deployment browserless: unlike mstarpy, it does not
+launch Selenium merely to construct a data session.
 """
 from __future__ import annotations
 
-import importlib
 import re
-import signal
 import threading
 from dataclasses import dataclass
-from types import ModuleType
 from typing import Any
 
 _ISIN_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
 
-# Process-wide Morningstar session. Building a session performs a Selenium
-# handshake to obtain WAF cookies, so it is expensive; reuse one instance.
-_MSTARPY: ModuleType | None = None
-_MSTARPY_LOCK = threading.RLock()
+# Process-wide search session. Reuse HTTP connections across Streamlit reruns.
+_SESSION_LOCK = threading.RLock()
 _SESSION: Any | None = None
 
+class YahooSearchSession:
+    """Small compatibility adapter for the search methods FundLens uses."""
 
-def get_mstarpy() -> ModuleType:
-    """Import and return ``mstarpy``, safely under Streamlit.
+    def general_search(self, payload: dict, **_: Any) -> dict:
+        query = str(payload.get("q") or "").strip()
+        limit = int(payload.get("limit") or 10)
+        if not query:
+            return {"results": [], "count": 0, "pages": 0}
 
-    ``mstarpy`` registers signal handlers at import time. Streamlit executes
-    app scripts in a worker thread, where Python forbids ``signal.signal``.
-    The CLI still imports normally on the main thread; UI-triggered imports
-    temporarily guard ``signal.signal`` so mstarpy can finish importing.
-    """
-    global _MSTARPY
-    if _MSTARPY is not None:
-        return _MSTARPY
+        import yfinance as yf
 
-    with _MSTARPY_LOCK:
-        if _MSTARPY is not None:
-            return _MSTARPY
+        # yfinance manages Yahoo's crumb/cookie flow and is materially more
+        # reliable than calling query2 directly, which quickly returns 429.
+        quotes = yf.Search(query, max_results=limit, news_count=0).quotes or []
 
-        if threading.current_thread() is threading.main_thread():
-            _MSTARPY = importlib.import_module("mstarpy")
-            return _MSTARPY
+        results = []
+        for quote in quotes:
+            quote_type = str(quote.get("quoteType") or "").upper()
+            if quote_type not in {"MUTUALFUND", "ETF"}:
+                continue
+            symbol = quote.get("symbol")
+            value = {
+                "name": quote.get("longname") or quote.get("shortname") or symbol,
+                "shortName": quote.get("shortname"),
+                "ticker": symbol,
+                "securityID": symbol,
+                "performanceID": str(symbol).split(".", 1)[0] if symbol else None,
+                "investmentType": "FE" if quote_type == "ETF" else "FO",
+                "securityType": quote_type,
+                "exchange": quote.get("exchange"),
+                "exchangeCountry": quote.get("exchDisp"),
+            }
+            if _looks_like_isin(query):
+                value["isin"] = query.upper()
+            results.append({"type": "security", "value": value})
+            if len(results) >= limit:
+                break
+        return {"results": results, "count": len(results), "pages": 1}
 
-        real_signal = signal.signal
-
-        def streamlit_safe_signal(sig, handler):
-            try:
-                return real_signal(sig, handler)
-            except ValueError as exc:
-                if "main thread" in str(exc):
-                    return None
-                raise
-
-        signal.signal = streamlit_safe_signal
-        try:
-            _MSTARPY = importlib.import_module("mstarpy")
-        finally:
-            signal.signal = real_signal
-        return _MSTARPY
+    def screener_universe(
+        self,
+        term: str,
+        *,
+        filters: dict | None = None,
+        pageSize: int = 10,
+        page: int = 1,
+        **_: Any,
+    ) -> list[dict]:
+        # Yahoo search is query-based rather than an enumerable universe. It is
+        # still useful for focused live searches; the bundled snapshot remains
+        # the source for broad, blank-query screening.
+        if not term.strip() or page > 1:
+            return []
+        results = self.general_search({"q": term, "limit": pageSize}).get("results", [])
+        wanted = (filters or {}).get("investmentType")
+        if wanted:
+            results = [r for r in results if (r.get("value") or {}).get("investmentType") == wanted]
+        return results
 
 
 def get_session() -> Any:
-    """Return a lazily-constructed, process-wide :class:`MorningstarSession`."""
+    """Return the lazily constructed browserless search session."""
     global _SESSION
     if _SESSION is None:
-        mstarpy = get_mstarpy()
-        _SESSION = mstarpy.MorningstarSession()
+        with _SESSION_LOCK:
+            if _SESSION is None:
+                _SESSION = YahooSearchSession()
     return _SESSION
 
 
 @dataclass
 class FundSearchResult:
-    """Lightweight fund search result from Morningstar general_search."""
+    """Lightweight fund search result from the provider search endpoint."""
 
     isin: str | None
     name: str
@@ -168,6 +178,27 @@ def _security_type(*labels: Any) -> str:
     return "fund"
 
 
+def _infer_equity_category(name: str, asset_classes: dict) -> str | None:
+    """Infer a coarse geographic equity category when Yahoo omits one."""
+    if float(asset_classes.get("stockPosition") or 0) < 0.5:
+        return None
+    text = name.casefold()
+    geography = (
+        (("emerging",), "Global Emerging Markets"),
+        (("asia", "pacific"), "Asia Pacific"),
+        (("india",), "India"),
+        (("japan",), "Japan"),
+        (("europe", "european"), "Europe"),
+        (("united kingdom", " uk ", "britain", "british"), "UK Equity"),
+        (("north america", " usa", " us ", "american"), "North America"),
+        (("global", "world", "international"), "Global Equity"),
+    )
+    for keywords, category in geography:
+        if any(keyword in f" {text} " for keyword in keywords):
+            return category
+    return "Global Equity"
+
+
 def _search_hit(query: str) -> dict:
     """Run general_search and return the first result's ``value`` dict.
 
@@ -192,11 +223,10 @@ def _search_hit(query: str) -> dict:
 
 
 def search_funds(query: str, limit: int = 10) -> list[FundSearchResult]:
-    """Search Morningstar for funds matching ``query``.
+    """Search Yahoo Finance for funds matching ``query``.
 
-    This is intentionally lightweight for interactive UIs: it only calls
-    ``general_search`` and does not instantiate ``mstarpy.Funds`` or fetch
-    metadata/quotes/people for each candidate.
+    This is intentionally lightweight for interactive UIs: it only calls the
+    search endpoint and does not fetch full metadata for each candidate.
     """
     query = query.strip()
     if not query:
@@ -244,58 +274,76 @@ def resolve_fund(isin_or_name: str) -> FundMeta:
     query = isin_or_name.strip()
     hit = _search_hit(query)
 
-    isin = _first(hit.get("isin"), query if _looks_like_isin(query) else None)
+    isin = _first(
+        hit.get("isin"),
+        query.upper() if _looks_like_isin(query) else None,
+        hit.get("ticker"),
+    )
     if not isin:
         raise LookupError(
             f"could not determine an ISIN for {isin_or_name!r}; "
             f"search hit keys: {sorted(hit.keys())}"
         )
 
-    session = get_session()
-    mstarpy = get_mstarpy()
-    fund = mstarpy.Funds(isin, session=session)
+    symbol = _first(hit.get("ticker"), hit.get("symbol"))
+    if not symbol:
+        raise LookupError(f"could not resolve a Yahoo Finance symbol for {isin!r}")
 
-    # metaData is the primary source; quote(2) and people fill gaps.
     try:
-        meta = fund.metaData() or {}
-    except Exception as exc:  # noqa: BLE001 - provider errors surfaced as LookupError
-        raise LookupError(f"metaData() failed for {isin!r}: {exc}") from exc
-    try:
-        quote = fund.quote(2) or {}
-    except Exception:  # noqa: BLE001 - quote is a best-effort fallback source
-        quote = {}
-    try:
-        people = fund.people() or {}
-    except Exception:  # noqa: BLE001 - people is a best-effort fallback source
-        people = {}
+        import yfinance as yf
 
-    sec_id = _first(meta.get("secId"), quote.get("secId"), hit.get("securityID"))
-    if not sec_id:
-        raise LookupError(f"could not resolve a secId for {isin!r}")
+        ticker = yf.Ticker(str(symbol))
+        info = ticker.info or {}
+        try:
+            funds_data = ticker.funds_data
+            overview = funds_data.fund_overview or {}
+            asset_classes = funds_data.asset_classes or {}
+        except Exception:  # noqa: BLE001 - metadata is best effort
+            overview = {}
+            asset_classes = {}
+    except Exception as exc:  # noqa: BLE001 - provider errors surfaced clearly
+        raise LookupError(f"Yahoo Finance metadata failed for {isin!r}: {exc}") from exc
 
-    ongoing_raw = _first(meta.get("onGoingCharge"), quote.get("onGoingCharge"))
-    ongoing_charge = float(ongoing_raw) / 100.0 if ongoing_raw is not None else None
+    inception_raw = info.get("fundInceptionDate")
+    if isinstance(inception_raw, (int, float)):
+        import datetime as dt
 
-    tenure_raw = _first(
-        people.get("averageManagerTenure"), meta.get("averageManagerTenure")
+        inception_date = dt.datetime.fromtimestamp(inception_raw, tz=dt.UTC).date().isoformat()
+    else:
+        inception_date = _normalise_date(inception_raw)
+
+    expense_raw = info.get("annualReportExpenseRatio")
+    ongoing_charge = float(expense_raw) if expense_raw not in (None, 0, 0.0) else None
+    security_type = _security_type(hit.get("investmentType"), hit.get("securityType"))
+    currency = str(_first(info.get("currency"), hit.get("baseCurrency")) or "")
+    name = str(_first(info.get("longName"), info.get("shortName"), hit.get("name"), isin))
+    category = _first(
+        info.get("category"),
+        overview.get("categoryName"),
+        _infer_equity_category(name, asset_classes),
     )
-    manager_tenure_years = float(tenure_raw) if tenure_raw is not None else None
+    family = _first(info.get("fundFamily"), overview.get("family"))
+    sec_id = str(_first(hit.get("securityID"), hit.get("performanceID"), symbol))
 
     return FundMeta(
-        isin=str(_first(meta.get("isin"), isin)),
-        sec_id=str(sec_id),
-        name=str(_first(meta.get("name"), quote.get("investmentName"), hit.get("name"), isin)),
-        currency=str(_first(meta.get("baseCurrencyId"), quote.get("currency"), hit.get("baseCurrency")) or ""),
-        domicile=_first(meta.get("domicileCountryId"), quote.get("domicileCountryId")),
-        category=_first(quote.get("categoryName"), meta.get("categoryName")),
-        benchmark_name=_benchmark_name(meta),
-        inception_date=_normalise_date(
-            _first(people.get("inceptionDate"), meta.get("inceptionDate"))
-        ),
+        isin=str(isin),
+        sec_id=sec_id,
+        name=name,
+        currency=currency,
+        domicile=None,
+        category=category,
+        benchmark_name=None,
+        inception_date=inception_date,
         ongoing_charge=ongoing_charge,
-        manager_tenure_years=manager_tenure_years,
-        security_type=_security_type(
-            meta.get("securityType"), quote.get("securityType"), hit.get("investmentType")
-        ),
-        raw={"search": hit, "metaData": meta, "quote": quote, "people": people},
+        manager_tenure_years=None,
+        security_type=security_type,
+        raw={
+            "provider": "yfinance",
+            "search": hit,
+            "quote": {"ticker": symbol},
+            "info": info,
+            "fund_overview": overview,
+            "asset_classes": asset_classes,
+            "fund_family": family,
+        },
     )
