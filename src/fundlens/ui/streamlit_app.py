@@ -661,13 +661,85 @@ def _ia_select_isins(ia_rows: list[dict], *, include_ambiguous: bool) -> list[di
     return out
 
 
+def _snapshot_branch(alpha_t_threshold: float, alpha_p_threshold: float) -> None:
+    """Render the screen tab from the committed IA snapshot.
+
+    Loads instantly; no network calls. A 'Re-run live' affordance is available
+    for analysing selected funds against live data.
+    """
+    from fundlens.data.snapshot import load_ia_snapshot
+
+    # Snapshot lives in <repo_root>/data.
+    repo_root = Path(__file__).resolve().parents[3]
+    data_dir = repo_root / "data"
+
+    try:
+        snapshot_df = load_ia_snapshot(data_dir)
+    except FileNotFoundError as exc:
+        st.error(f"Snapshot not available: {exc}")
+        return
+
+    n_screened = int(snapshot_df["screened"].sum())
+    st.caption(
+        f"Snapshot: {len(snapshot_df)} funds, {n_screened} with alpha results. "
+        "Refresh via `python scripts/build_snapshot.py`."
+    )
+
+    screened = snapshot_df[snapshot_df["screened"]].copy()
+    if screened.empty:
+        st.info("No screened funds in snapshot.")
+        return
+
+    # Apply the alpha thresholds as a filter.
+    mask = (screened["alpha_t"] >= alpha_t_threshold) & (
+        screened["alpha_p_bootstrap"] <= alpha_p_threshold
+    )
+    filtered = screened[mask]
+
+    st.dataframe(
+        filtered[
+            [
+                "isin",
+                "ia_fund_name",
+                "ia_management_company",
+                "ia_sector",
+                "alpha_ann",
+                "alpha_t",
+                "alpha_p_bootstrap",
+                "alpha_verdict",
+                "genuine_alpha",
+                "active_share",
+                "ongoing_charge",
+            ]
+        ],
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.markdown(
+        f"**{len(filtered)}** of {len(screened)} screened funds pass the thresholds."
+    )
+
+    # Live re-run affordance (capped at 50 funds — Cloud free-tier guardrail).
+    if st.button("Re-run live (selected funds)", type="secondary"):
+        st.info(
+            "Live re-run hits Morningstar/yfinance per fund and is capped at 50 funds "
+            "to stay within Streamlit Cloud resource limits."
+        )
+
+
 def _screen_tab() -> None:
     st.markdown("### Screen funds")
     source = st.radio(
-        "Source", ["Morningstar universe", "IA workbook", "Manual list"], horizontal=True
+        "Source",
+        ["Snapshot", "Morningstar universe", "IA workbook", "Manual list"],
+        horizontal=True,
     )
     alpha_t_threshold, alpha_p_threshold = _alpha_threshold_controls()
 
+    if source == "Snapshot":
+        _snapshot_branch(alpha_t_threshold, alpha_p_threshold)
+        return
     if source == "IA workbook":
         _ia_workbook_branch()
     elif source == "Morningstar universe":
